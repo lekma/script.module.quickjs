@@ -1,0 +1,30 @@
+# Addon Name: QuickJS Javascript Engine
+# Addon id: script.module.quickjs
+msgid ""
+msgstr ""
+"Project-Id-Version: script.module.quickjs\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgctxt "#30000"
+msgid "QuickJS Javascript Engine"
+msgstr ""
+
+msgctxt "#30001"
+msgid "Do you want to install QuickJS {}?"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Downloading QuickJS {}..."
+msgstr ""
+
+msgctxt "#30003"
+msgid "Installing QuickJS {}..."
+msgstr ""
+
+msgctxt "#30004"
+msgid "QuickJS {} installed."
+msgstr ""
