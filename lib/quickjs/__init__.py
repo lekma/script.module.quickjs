@@ -50,11 +50,26 @@ class QuickJSInstaller(object):
         return (cls.__path__.is_file() and os.access(cls.__path__, os.X_OK))
 
     @classmethod
+    def __run__(cls, *args, check=True):
+        return subprocess.run(
+            args, check=check, stdout=subprocess.PIPE, text=True
+        ).stdout.strip()
+
+    @classmethod
+    def __confirm__(cls):
+        if cls.__confirmed__ is None:
+            cls.__confirmed__ = xbmcgui.Dialog().yesno(
+                cls.__string__(30000),
+                cls.__string__(30001).format(cls.__latest__())
+            )
+        return cls.__confirmed__
+
+    @classmethod
     def __current__(cls):
         if not cls.__current_version__:
-            cls.__current_version__ =  subprocess.run(
-                (f"{cls.__path__}", "-h"), stdout=subprocess.PIPE
-            ).stdout.decode("utf-8").strip().splitlines()[0].split(" ")[-1]
+            cls.__current_version__ =  cls.__run__(
+                f"{cls.__path__}", "-h", check=False
+            ).splitlines()[0].split(" ")[-1]
         return cls.__current_version__
 
     @classmethod
@@ -69,15 +84,6 @@ class QuickJSInstaller(object):
                     response.read().decode("utf-8").strip()
                 )["version"]
         return cls.__latest_version__
-
-    @classmethod
-    def __confirm__(cls):
-        if cls.__confirmed__ is None:
-            cls.__confirmed__ = xbmcgui.Dialog().yesno(
-                cls.__string__(30000),
-                cls.__string__(30001).format(cls.__latest__())
-            )
-        return cls.__confirmed__
 
     @classmethod
     def __target__(cls):
