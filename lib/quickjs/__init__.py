@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import platform
+import shutil
 import stat
 import subprocess
 import sys
@@ -17,25 +18,36 @@ from packaging.version import Version
 
 
 # ------------------------------------------------------------------------------
-# QuickJSInstaller
+# Runtime
 
-class QuickJSInstaller(object):
+class Runtime(object):
 
-    __addon_id__ = "script.module.quickjs"
+    __runtime_name__ = "QuickJS"
+    __runtime_desc__ = "QuickJS Javascript Engine"
+    __runtime_id__ = "quickjs"
+    __runtime_exe__ = "qjs"
+    __runtime_url__ = "https://bellard.org/quickjs/binary_releases"
+
+    # --------------------------------------------------------------------------
+
+    __addon_id__ = f"script.module.{__runtime_id__}"
     __addon__ = xbmcaddon.Addon(__addon_id__)
 
-    __kodi_path__ = "special://home/system/quickjs/qjs"
-    __path__ = pathlib.Path(xbmcvfs.translatePath(__kodi_path__))
-    __url__ = urllib.parse.urlparse(
-        "https://bellard.org/quickjs/binary_releases"
+    __path__ = pathlib.Path(
+        xbmcvfs.translatePath(__addon__.getAddonInfo("profile")),
+        __runtime_exe__
     )
+    __url__ = urllib.parse.urlparse(__runtime_url__)
 
     __progress__ = xbmcgui.DialogProgress()
     __mode__ = (stat.S_IRWXU | stat.S_IRWXG | stat.S_IROTH | stat.S_IXOTH)
 
     __current_version__ = None
     __latest_version__ = None
+    __label_version__ = None
     __confirmed__ = None
+
+    # --------------------------------------------------------------------------
 
     @classmethod
     def __log__(cls, msg, level=xbmc.LOGINFO):
@@ -46,48 +58,10 @@ class QuickJSInstaller(object):
         return cls.__addon__.getLocalizedString(_id_)
 
     @classmethod
-    def __installed__(cls):
-        return (cls.__path__.is_file() and os.access(cls.__path__, os.X_OK))
-
-    @classmethod
     def __run__(cls, *args, check=True):
         return subprocess.run(
             args, check=check, stdout=subprocess.PIPE, text=True
         ).stdout.strip()
-
-    @classmethod
-    def __confirm__(cls):
-        if cls.__confirmed__ is None:
-            cls.__confirmed__ = xbmcgui.Dialog().yesno(
-                cls.__string__(30000),
-                cls.__string__(30001).format(cls.__latest__())
-            )
-        return cls.__confirmed__
-
-    @classmethod
-    def __current__(cls):
-        if not cls.__current_version__:
-            cls.__current_version__ =  cls.__run__(
-                f"{cls.__path__}", "-h", check=False
-            ).splitlines()[0].split(" ")[-1]
-        return cls.__current_version__
-
-    @classmethod
-    def __latest__(cls):
-        if not cls.__latest_version__:
-            with urllib.request.urlopen(
-                cls.__url__._replace(
-                    path=f"{cls.__url__.path}/LATEST.json"
-                ).geturl()
-            ) as response:
-                cls.__latest_version__ = json.loads(
-                    response.read().decode("utf-8").strip()
-                )["version"]
-        return cls.__latest_version__
-
-    @classmethod
-    def __target__(cls):
-        return f"quickjs-{sys.platform}-{platform.machine()}"
 
     @classmethod
     def __update__(cls, block_count, block_size, total_size):
@@ -95,39 +69,120 @@ class QuickJSInstaller(object):
             ((block_count * block_size) * 100) // total_size
         )
 
+    # --------------------------------------------------------------------------
+
+    @classmethod
+    def __installed__(cls):
+        return (cls.__path__.is_file() and os.access(cls.__path__, os.X_OK))
+
+    @classmethod
+    def __current__(cls):
+        if not cls.__current_version__:
+            cls.__current_version__ =  cls.__get_current__()
+        return cls.__current_version__
+
+    @classmethod
+    def __latest__(cls):
+        if not cls.__latest_version__:
+            cls.__latest_version__ = cls.__get_latest__()
+        return cls.__latest_version__
+
+    @classmethod
+    def __label__(cls):
+        if not cls.__label_version__:
+            cls.__label_version__ = f"{cls.__runtime_name__} {cls.__latest__()}"
+        return cls.__label_version__
+
+    @classmethod
+    def __version__(cls, version):
+        return Version(cls.__get_version__(version))
+
+    @classmethod
+    def __outdated__(cls):
+        return (
+            cls.__version__(cls.__current__()) <
+            cls.__version__(cls.__latest__())
+        )
+
+    @classmethod
+    def __confirm__(cls):
+        if cls.__confirmed__ is None:
+            cls.__confirmed__ = xbmcgui.Dialog().yesno(
+                cls.__runtime_desc__,
+                cls.__string__(30002).format(cls.__label__())
+            )
+        return cls.__confirmed__
+
+    @classmethod
+    def __target__(cls):
+        return cls.__url__._replace(path=f"{cls.__get_target__()}.zip").geturl()
+
     @classmethod
     def __install__(cls):
-        url = cls.__url__._replace(
-            path=f"{cls.__url__.path}/{cls.__target__()}-{cls.__latest__()}.zip"
-        ).geturl()
+        cls.__log__(cls.__string__(30003).format(cls.__label__()))
         cls.__progress__.create(
-            cls.__string__(30000),
-            cls.__string__(30002).format(cls.__latest__())
+            cls.__runtime_desc__, cls.__string__(30004).format(cls.__label__())
         )
-        path, _ = urllib.request.urlretrieve(url, reporthook=cls.__update__)
+        path, _ = urllib.request.urlretrieve(
+            cls.__target__(), reporthook=cls.__update__
+        )
         cls.__progress__.close()
         os.makedirs(cls.__path__.parent, exist_ok=True)
         with zipfile.ZipFile(path, "r") as zip_file:
-            zip_file.extract("qjs", path=cls.__path__.parent)
+            zip_file.extract(cls.__runtime_exe__, path=cls.__path__.parent)
         pathlib.Path(path).unlink()
         cls.__path__.chmod(cls.__mode__)
         cls.__current_version__ = None
         xbmcgui.Dialog().ok(
-            cls.__string__(30000),
-            cls.__string__(30004).format(cls.__latest__())
+            cls.__runtime_desc__, cls.__string__(30005).format(cls.__label__())
+        )
+
+    @classmethod
+    def __uninstall__(cls):
+        shutil.rmtree(cls.__path__.parent)
+        xbmcgui.Dialog().ok(
+            cls.__runtime_desc__,
+            cls.__string__(30006).format(cls.__runtime_name__)
+        )
+
+    # --------------------------------------------------------------------------
+
+    @classmethod
+    def __get_version__(cls, version):
+        return version.replace("-", ".")
+
+    @classmethod
+    def __get_current__(cls):
+        return cls.__run__(
+            f"{cls.__path__}", "-h", check=False
+        ).splitlines()[0].split(" ")[-1]
+
+    @classmethod
+    def __get_latest__(cls):
+        with urllib.request.urlopen(
+            cls.__url__._replace(
+                path=f"{cls.__url__.path}/LATEST.json"
+            ).geturl()
+        ) as response:
+            return json.loads(
+                response.read().decode("utf-8").strip()
+            )["version"]
+
+    @classmethod
+    def __get_target__(cls):
+        return "{}/{}-{}-{}-{}".format(
+            cls.__url__.path,
+            cls.__runtime_id__,
+            sys.platform,
+            platform.machine(),
+            cls.__latest__()
         )
 
     # --------------------------------------------------------------------------
 
     def __init__(self):
         if (
-            (
-                (not self.__installed__()) or
-                (
-                    Version(self.__current__().replace("-", ".")) <
-                    Version(self.__latest__().replace("-", "."))
-                )
-            ) and
+            ((not self.__installed__()) or self.__outdated__()) and
             self.__confirm__()
         ):
             self.__install__()
@@ -135,10 +190,14 @@ class QuickJSInstaller(object):
 
 # ------------------------------------------------------------------------------
 
+def name():
+    if ((runtime := Runtime()).__installed__()):
+        return runtime.__runtime_name__
+
 def path():
-    if ((installer := QuickJSInstaller()).__installed__()):
-        return str(installer.__path__)
+    if ((runtime := Runtime()).__installed__()):
+        return str(runtime.__path__)
 
 def version():
-    if ((installer := QuickJSInstaller()).__installed__()):
-        return str(installer.__current__())
+    if ((runtime := Runtime()).__installed__()):
+        return str(runtime.__current__())
